@@ -1,0 +1,143 @@
+diff --git a/PyTorch/Classification/ConvNets/image_classification/training.py b/PyTorch/Classification/ConvNets/image_classification/training.py
+index 2cf4d4e..20dbc3f 100644
+--- a/PyTorch/Classification/ConvNets/image_classification/training.py
++++ b/PyTorch/Classification/ConvNets/image_classification/training.py
+@@ -514,66 +514,67 @@ def train_loop(
+     prec1 = -1
+ 
+     print(f"RUNNING EPOCHS FROM {start_epoch} TO {end_epoch}")
+-    for epoch in range(start_epoch, end_epoch):
+-        if logger is not None:
+-            logger.start_epoch()
+-        if not skip_training:
+-            train(
+-                train_loader,
+-                model_and_loss,
+-                optimizer,
+-                lr_scheduler,
+-                fp16,
+-                logger,
+-                epoch,
+-                use_amp=use_amp,
+-                prof=prof,
+-                register_metrics=epoch == start_epoch,
+-                batch_size_multiplier=batch_size_multiplier,
+-            )
+-
+-        if not skip_validation:
+-            prec1, nimg = validate(
+-                val_loader,
+-                model_and_loss,
+-                fp16,
+-                logger,
+-                epoch,
+-                prof=prof,
+-                register_metrics=epoch == start_epoch,
+-            )
+-        if logger is not None:
+-            logger.end_epoch()
++    with torch.autograd.profiler.emit_nvtx():
++        for epoch in range(start_epoch, end_epoch):
++            if logger is not None:
++                logger.start_epoch()
++            if not skip_training:
++                train(
++                    train_loader,
++                    model_and_loss,
++                    optimizer,
++                    lr_scheduler,
++                    fp16,
++                    logger,
++                    epoch,
++                    use_amp=use_amp,
++                    prof=prof,
++                    register_metrics=epoch == start_epoch,
++                    batch_size_multiplier=batch_size_multiplier,
++                )
+ 
+-        if save_checkpoints and (
+-            not torch.distributed.is_initialized() or torch.distributed.get_rank() == 0
+-        ):
+             if not skip_validation:
+-                is_best = logger.metrics["val.top1"]["meter"].get_epoch() > best_prec1
+-                best_prec1 = max(
+-                    logger.metrics["val.top1"]["meter"].get_epoch(), best_prec1
++                prec1, nimg = validate(
++                    val_loader,
++                    model_and_loss,
++                    fp16,
++                    logger,
++                    epoch,
++                    prof=prof,
++                    register_metrics=epoch == start_epoch,
++                )
++            if logger is not None:
++                logger.end_epoch()
++
++            if save_checkpoints and (
++                not torch.distributed.is_initialized() or torch.distributed.get_rank() == 0
++            ):
++                if not skip_validation:
++                    is_best = logger.metrics["val.top1"]["meter"].get_epoch() > best_prec1
++                    best_prec1 = max(
++                        logger.metrics["val.top1"]["meter"].get_epoch(), best_prec1
++                    )
++                else:
++                    is_best = False
++                    best_prec1 = 0
++
++                if should_backup_checkpoint(epoch):
++                    backup_filename = "checkpoint-{}.pth.tar".format(epoch + 1)
++                else:
++                    backup_filename = None
++                utils.save_checkpoint(
++                    {
++                        "epoch": epoch + 1,
++                        "arch": model_and_loss.arch,
++                        "state_dict": model_and_loss.model.state_dict(),
++                        "best_prec1": best_prec1,
++                        "optimizer": optimizer.state_dict(),
++                    },
++                    is_best,
++                    checkpoint_dir=checkpoint_dir,
++                    backup_filename=backup_filename,
++                    filename=checkpoint_filename,
+                 )
+-            else:
+-                is_best = False
+-                best_prec1 = 0
+-
+-            if should_backup_checkpoint(epoch):
+-                backup_filename = "checkpoint-{}.pth.tar".format(epoch + 1)
+-            else:
+-                backup_filename = None
+-            utils.save_checkpoint(
+-                {
+-                    "epoch": epoch + 1,
+-                    "arch": model_and_loss.arch,
+-                    "state_dict": model_and_loss.model.state_dict(),
+-                    "best_prec1": best_prec1,
+-                    "optimizer": optimizer.state_dict(),
+-                },
+-                is_best,
+-                checkpoint_dir=checkpoint_dir,
+-                backup_filename=backup_filename,
+-                filename=checkpoint_filename,
+-            )
+ 
+ 
+ # }}}
+diff --git a/PyTorch/Classification/ConvNets/main.py b/PyTorch/Classification/ConvNets/main.py
+index 5997114..3239a1d 100644
+--- a/PyTorch/Classification/ConvNets/main.py
++++ b/PyTorch/Classification/ConvNets/main.py
+@@ -66,6 +66,9 @@ from image_classification.utils import *
+ 
+ import dllogger
+ 
++import pyprof
++pyprof.init(enable_function_stack=True)
++
+ 
+ def add_parser_arguments(parser):
+     model_names = models.resnet_versions.keys()
