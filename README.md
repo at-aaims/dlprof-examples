@@ -21,3 +21,22 @@ git apply ../pytorch/ConvNets.patch
 cd ../pytorch 
 bsub prof.lsf
 ```
+
+### Visualize Output
+
+- install tensorboard plugin (for x86 only)
+```bash
+pip install nvidia-pyindex
+pip install nvidia-tensorboard
+pip install nvidia-tensorboard-plugin-dlprof
+```
+- use pre-installed env on Andes
+```bash
+module load python
+source activate /gpfs/alpine/world-shared/stf011/junqi/dlprof-env
+tensorboard --logdir /gpfs/alpine/world-shared/stf011/junqi/dlprof-env/event_files --host localhost
+```
+- port forward to local machine
+```bash
+http://localhost:6006
+```
